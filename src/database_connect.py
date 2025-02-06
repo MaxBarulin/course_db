@@ -12,7 +12,12 @@ def db_create() -> None:
     conn.autocommit = True
     cur = conn.cursor()  # Курсор для работы с DB
 
-    cur.execute(f"DROP DATABASE company")  # Удаление базы данных (обновляем)
+    # Проверяем, существует ли база данных "company"
+    cur.execute("SELECT 1 FROM pg_database WHERE datname='company'")
+    exists = cur.fetchone()
+
+    if exists:
+        cur.execute(f"DROP DATABASE company")  # Удаление базы данных (обновляем)
     cur.execute(f"CREATE DATABASE company")  # Создание базы данных
 
     cur.close()  # Закрытие курсора
@@ -27,11 +32,11 @@ def db_create_table() -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
-                CREATE TABLE company (
+                CREATE TABLE IF NOT EXISTS company (
                     id SERIAL UNIQUE,
                     company_id INT PRIMARY KEY,
                     company_name VARCHAR(255) NOT NULL);
-                CREATE TABLE vacancy (
+                CREATE TABLE IF NOT EXISTS vacancy (
                     vacancy_id SERIAL PRIMARY KEY,
                     company_id INT REFERENCES company(company_id),
                     vacancy_name VARCHAR(255) NOT NULL,
@@ -62,12 +67,17 @@ def load_to_database_company() -> None:
                 """
                 INSERT INTO company (company_id, company_name)
                 VALUES (%s, %s)
+                ON CONFLICT (company_id) DO NOTHING
                 RETURNING company_id
                 """,
                 vars=(employer['id'], employer["name"]),
             )
 
-            company_id = cur.fetchone()[0]
+            company_id = cur.fetchone()
+            if company_id:
+                company_id = company_id[0]
+            else:
+                continue  # Компания уже существует, переходим к следующей
 
             for vacancy in hh_vacancy:
                 if int(vacancy['employer']['id']) == int(company_id):
@@ -95,6 +105,6 @@ def load_to_database_company() -> None:
 
 
 if __name__ == '__main__':
-    db_create('../database.ini')
-    db_create_table('../database.ini')
-    load_to_database_company('../database.ini')
+    db_create()
+    db_create_table()
+    load_to_database_company()
